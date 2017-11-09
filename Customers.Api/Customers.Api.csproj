@@ -135,7 +135,6 @@
     </Compile>
     <Compile Include="Models\Dto\AddressSaveDto.cs" />
     <Compile Include="Models\Dto\CustomerSaveDto.cs" />
-    <Compile Include="Models\Dto\CustomerUpdateDto.cs" />
     <Compile Include="Models\Dto\SlimAddressDto.cs" />
     <Compile Include="Models\Dto\SlimCustomerDto.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

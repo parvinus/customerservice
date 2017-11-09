@@ -10,6 +10,8 @@ namespace Customers.Api.Models.Dto
 {
     public class CustomerSaveDto
     {
+        public int? Id { get; set; }
+
         [Required(ErrorMessage = "Age is required")]
         [Range(10,20, ErrorMessage = "age must be between 10 and 20")]
         public int? Age { get; set; }
@@ -23,8 +25,9 @@ namespace Customers.Api.Models.Dto
         public string Email { get; set; }
 
         //[Required(ErrorMessage = "Address ID is required")]
-        //public int? Address_Id { get; set; }
-        [Required(ErrorMessage = "An Address is required.")]
+        public int? Address_Id { get; set; }
+
+        //[Required(ErrorMessage = "An Address is required.")]
         public AddressSaveDto Address { get; set; }
     }
 }

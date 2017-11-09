@@ -38,8 +38,6 @@ namespace Customers.Api.Controllers
                 null, "success", allCustomers);
         }
 
-        //TODO: rewrite getcustomerbyId to use a DTO instead of a direct data object
-
         [Route("GetCustomerById")]
         [HttpGet]
         public HttpResponseMessage GetCustomerById(int customerId)
@@ -96,9 +94,8 @@ namespace Customers.Api.Controllers
             try
             {
                 var result = CustomerServiceDb.Customers
-                    .Where(customer => customer.Id == customerId && customer.Address.City == city).SingleOrDefault();
+                    .SingleOrDefault(customer => customer.Id == customerId && customer.Address.City == city);
                 var message = "";
-                var errors = new List<string>();
 
                 if (result == null)
                     message = "no results found";
@@ -121,6 +118,7 @@ namespace Customers.Api.Controllers
         [HttpPost]
         public HttpResponseMessage Create(CustomerSaveDto newCustomer)
         {
+            //validate the model being passed from the request
             if (!ModelState.IsValid)
             {
                 return Request.CreateErrorResponse(HttpStatusCode.BadRequest, ModelState);
@@ -130,17 +128,39 @@ namespace Customers.Api.Controllers
             {
                 var statusCode = HttpStatusCode.OK;
                 var responseModel = new CustomerResponseModel();
+                Address addressDbo = null;
 
-                var address = newCustomer.Address;
-
-                var addressDbo = new Address()
+                //if an address_id is provided we need to validate it.
+                if (newCustomer?.Address_Id != null)
                 {
-                    Street = address.Street,
-                    Unit = address.Unit,
-                    City = address.City,
-                    State = address.State,
-                    PostalCode = address.PostalCode
-                };
+                    //check the database to verify the provided address id exists
+                    var address =
+                        CustomerServiceDb.Addresses.SingleOrDefault(addr => addr.Id == newCustomer.Address_Id);
+
+                    //return an error response if the address wasn't found.
+                    if (address == null)
+                    {
+                        responseModel.Message = "failed to create customer";
+                        responseModel.Errors = new List<string>(){"addressId provided does not exist."};
+
+                        return Request.CreateResponse(HttpStatusCode.BadRequest, responseModel);
+                    } 
+                }
+
+                //check if the request sent an address Dto as a payload
+                if (newCustomer?.Address != null)
+                {
+                    //at this point if we have an address payload it's a new address
+                    var address = newCustomer.Address;
+                    addressDbo = new Address()
+                    {
+                        Street = address.Street,
+                        Unit = address.Unit,
+                        City = address.City,
+                        State = address.State,
+                        PostalCode = address.PostalCode
+                    };
+                }
 
                 var customerDbo = new Customer()
                 {
@@ -148,7 +168,7 @@ namespace Customers.Api.Controllers
                     LastName = newCustomer.LastName,
                     Address = addressDbo,
                     Age = Convert.ToInt32(newCustomer.Age),
-                    //Address_Id = Convert.ToInt32(newCustomer.Address_Id),
+                    Address_Id = newCustomer.Address_Id,
                     CreatedOn = DateTime.Now.ToUniversalTime(),
                     Email = newCustomer.Email
                 };
@@ -159,57 +179,6 @@ namespace Customers.Api.Controllers
                 if (rowsSaved > 0)
                     responseModel.Message = "success";
 
-                //if(ModelState.IsValid)
-             
-                // var errors = new List<string>();
-                //if (newCustomer == null)
-                //{
-                //    errors.Add("invalid customer.  customer was not added.");
-                // }
-                //             else
-                //           {
-                //   Validate(newCustomer);
-
-                //                   if(ModelState.IsValid)
-
-                //var message = "";
-                //var isAgeValid = CustomerValidator.ValidateAge(newCustomer.Age, out message);
-
-                //if (!isAgeValid)
-                //{
-                //    errors.Add(message);
-                //}
-
-                //var isFirstNameValid =
-                //    CustomerValidator.ValidateFirstName(newCustomer.FirstName, out message);
-
-                //if (!isFirstNameValid)
-                //{
-                //    errors.Add(message);
-                //}
-
-                //var isEmailValid = CustomerValidator.ValidateEmail(newCustomer.Email, out message);
-
-                //if (!isEmailValid)
-                //{
-                //    errors.Add(message);
-                //}
-
-                //Validate
-
-                //if(statusCode == HttpStatusCode.OK)
-                {
-                        
-                        //else errors.Add("unknown error.");
-                    }                      
-                //}
-
-                //if (errors.Count > 0)
-                //{
-                //    responseModel.Message = "failed to create customer";
-                //    statusCode = HttpStatusCode.BadRequest;
-                //}
-                //responseModel.Errors = errors;
                 return Request.CreateResponse(statusCode, responseModel);
             }
             catch (Exception e)
@@ -260,63 +229,115 @@ namespace Customers.Api.Controllers
 
         [Route("Update")]
         [HttpPut]
-        public HttpResponseMessage Update(CustomerUpdateDto updatedCustomer)
+        public HttpResponseMessage Update(CustomerSaveDto updateCustomerDto)
         {
             var errors = new List<string>();
             var message = "";
             var statusCode = HttpStatusCode.OK;
             object result = null;
 
+            Address updatedAddressDbo = null;
+            Customer updatedCustomerDbo = null;
+
             try
             {
-                if (updatedCustomer == null)
-                {
-                    message = "valid customer was not provided.";
-                    statusCode = HttpStatusCode.BadRequest;
-                }else if (!ModelState.IsValid)
+                if (!ModelState.IsValid)
                 {
                     return Request.CreateErrorResponse(HttpStatusCode.BadRequest, ModelState);
                 }
-                else
-                {
-                    var customer =
-                        CustomerServiceDb.Customers.SingleOrDefault(cust => cust.Id == updatedCustomer.Id);
 
-                    if (customer == null || customer.Id == 0)
+                //check if customer data was actually provided.
+                if (updateCustomerDto == null)
+                {
+                    errors.Add("customer is required.");
+                    statusCode = HttpStatusCode.BadRequest;
+                }
+
+                //check if the customer id is actually provided
+                else if (updateCustomerDto.Id == null)
+                {
+                    statusCode = HttpStatusCode.BadRequest;
+                    errors.Add("customer Id is required to update");
+                }
+
+                //check if the  customer id provided exists in database
+                if (statusCode == HttpStatusCode.OK)
+                {
+                    //validate the customer
+                    updatedCustomerDbo =
+                        CustomerServiceDb.Customers.SingleOrDefault(cust => cust.Id == updateCustomerDto.Id);
+
+                    //verify we found the customer
+                    if (updatedCustomerDbo == null)
                     {
-                        message = "customer not found";
+                        statusCode = HttpStatusCode.BadRequest;
+
+                        return Request.CreateErrorResponse(statusCode,
+                            new ArgumentException("requested customer does not exist"));
+                    }
+
+                    if (updateCustomerDto.Address_Id != null)
+                    {
+                        try
+                        {
+                            updatedAddressDbo = CustomerServiceDb.Addresses.Single(addr => addr.Id == updateCustomerDto.Address_Id);
+                        }
+                        catch (Exception e)
+                        {
+                            return Request.CreateErrorResponse(HttpStatusCode.BadRequest,
+                                new ArgumentException("requested address does not exist"));
+                        }
+                    }
+                    else if (updatedCustomerDbo.Address_Id != null)
+                    {
+                        if (updateCustomerDto.Address == null)
+                        {
+                            CustomerServiceDb.Addresses.Remove(updatedCustomerDbo.Address);
+                            CustomerServiceDb.Entry(updatedCustomerDbo.Address).State = EntityState.Deleted;
+                            updatedCustomerDbo.Address_Id = null;
+                        }
+                        else 
+                        try
+                        {
+                            updatedAddressDbo =
+                                CustomerServiceDb.Addresses.Single(addr => addr.Id == updatedCustomerDbo.Address_Id);
+                        }
+                        catch (Exception e)
+                        {
+                            return Request.CreateErrorResponse(HttpStatusCode.BadRequest,
+                                new ArgumentException("requested address does not exist"));
+                        }
                     }
                     else
                     {
-                        var address = customer.Address;
-                        var updatedAddress = updatedCustomer.Address;
-
-                        address.City = updatedAddress.City;
-                        address.Street = updatedAddress.Street;
-                        address.Unit = updatedAddress.Unit;
-                        address.State = updatedAddress.State;
-                        address.PostalCode = updatedAddress.PostalCode;
-
-                        customer.Address = address;
-                        customer.Age = Convert.ToInt32(updatedCustomer.Age);
-                        customer.Email = updatedCustomer.Email;
-                        customer.FirstName = updatedCustomer.FirstName;
-                        customer.LastName = updatedCustomer.LastName;
-
-                        CustomerServiceDb.Customers.Attach(customer);
-                        CustomerServiceDb.Entry(customer).State = EntityState.Modified;
-                        var updateCount = CustomerServiceDb.SaveChanges();
-
-                        if (updateCount > 0)
-                        {
-                            message = "success";
-                            result = updatedCustomer;
-                        }
-                        else
-                        {
-                            message = "no records were updated.";
-                        }
+                        updatedAddressDbo = new Address();
+                        CustomerServiceDb.Entry(updatedAddressDbo).State = EntityState.Added;
                     }
+
+                    if (updateCustomerDto.Address != null)
+                    {
+                        updatedAddressDbo.City = updateCustomerDto.Address.City;
+                        updatedAddressDbo.PostalCode = updateCustomerDto.Address.PostalCode;
+                        updatedAddressDbo.State = updateCustomerDto.Address.State;
+                        updatedAddressDbo.Street = updateCustomerDto.Address.Street;
+                        updatedAddressDbo.Unit = updateCustomerDto.Address.Unit;
+                    }
+
+
+                    //everything looks good, try to update the customer/address
+                    if (statusCode == HttpStatusCode.OK)
+                    {
+                        updatedCustomerDbo.Address = updatedAddressDbo;
+
+                        updatedCustomerDbo.Age = updateCustomerDto.Age ?? updatedCustomerDbo.Age;
+                        updatedCustomerDbo.Email = updateCustomerDto.Email;
+                        updatedCustomerDbo.FirstName = updateCustomerDto.FirstName;
+                        updatedCustomerDbo.LastName = updateCustomerDto.LastName;
+
+                        CustomerServiceDb.Customers.Attach(updatedCustomerDbo);
+                        CustomerServiceDb.Entry(updatedCustomerDbo).State = EntityState.Modified;
+                        CustomerServiceDb.SaveChanges();
+                    }              
                 }
             }
             catch (Exception e)
@@ -328,7 +349,7 @@ namespace Customers.Api.Controllers
             var responseModel = new CustomerResponseModel()
             {
                 Errors = errors,
-                Message = message,
+                Message = statusCode == HttpStatusCode.OK ? "success" : "failed to save customer",
                 Result = result
             };
 

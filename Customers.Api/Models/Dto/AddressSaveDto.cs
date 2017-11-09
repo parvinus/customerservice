@@ -8,6 +8,8 @@ namespace Customers.Api.Models.Dto
 {
     public class AddressSaveDto
     {
+        //public int? Id { get; set; }
+
         [Required(ErrorMessage = "Address street is required.", AllowEmptyStrings = false)]
         public string Street { get; set; }
 
